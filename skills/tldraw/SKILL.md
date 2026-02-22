@@ -9,15 +9,15 @@ Use this skill when the user wants visual thinking artifacts such as wireframes,
 
 ## Session Conventions
 
-- Use `.tldraw/` at the repo root as the canvas workspace.
-- Create `.tldraw/` first if it does not exist.
-- Create a new `.tldr` file per session using a timestamped name like `.tldraw/session-YYYYMMDD-HHMMSS-<topic>.tldr`.
+- Use `~/.tldraw/` as the default global canvas workspace.
+- Create `~/.tldraw/` first if it does not exist.
+- Create a new `.tldr` file per session using a timestamped name like `~/.tldraw/session-YYYYMMDD-HHMMSS-<topic>.tldr`.
 - If the user supplies a file path/name, use it instead.
 - For iterative work in the same session, keep updating the same session file unless the user asks for a new one.
 
 ## Workflow
 
-1. Ensure `.tldraw/` exists and create the session file with `tldraw create <file>`.
+1. Ensure `~/.tldraw/` exists and create the session file with `tldraw create <file>`.
 2. Start or reuse live preview in the background so work can continue (for example, `tldraw open <file> --watch --no-browser` as a background process).
 3. Capture the preview URL from stdout and share it with the user.
 4. Draw in small increments:
@@ -69,7 +69,8 @@ Use this skill when the user wants visual thinking artifacts such as wireframes,
 ## Example
 
 ```bash
-SESSION_FILE=".tldraw/session-$(date +%Y%m%d-%H%M%S)-auth-flow.tldr"
+mkdir -p ~/.tldraw
+SESSION_FILE="$HOME/.tldraw/session-$(date +%Y%m%d-%H%M%S)-auth-flow.tldr"
 tldraw create "$SESSION_FILE"
 tldraw draw "$SESSION_FILE" <<'EOF'
 frame 0,0 1100x700 "Auth Flow"
