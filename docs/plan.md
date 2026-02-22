@@ -335,6 +335,7 @@ function autoPlace(store: TLStore): { x: number, y: number }
 - Phase 4 delivers a local preview server (`src/preview/server.ts`) and `open` command (`src/commands/open.ts`) with websocket-based bidirectional file sync.
 - Plan adjustment: `preview/viewer.html` is implemented as a lightweight live SVG + JSON editor (not a bundled React tldraw app) to keep Phase 4 headless-friendly and testable in CLI workflows.
 - Preview validation includes websocket integration tests (server push + client save + watch mode) and a CLI smoke run for server startup/health.
+- Post-review hardening for preview added serialized publish flow, self-write watch suppression, safer blob-based SVG rendering, reconnect backoff, and stronger server shutdown handling.
 
 ### Phase 1: Core (MVP)
 
