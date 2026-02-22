@@ -1,0 +1,40 @@
+{
+  "name": "tldraw-cli",
+  "version": "1.0.0",
+  "description": "Headless CLI for creating and manipulating tldraw documents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "tldraw": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "tldraw",
+    "cli",
+    "diagram",
+    "wireframe"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tldraw/store": "^4.4.0",
+    "@tldraw/tlschema": "^4.4.0",
+    "@tldraw/utils": "^4.4.0",
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
