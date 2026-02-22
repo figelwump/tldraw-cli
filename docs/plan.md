@@ -318,7 +318,7 @@ function autoPlace(store: TLStore): { x: number, y: number }
 
 - Phase 1: Complete
 - Phase 2: Complete
-- Phase 3: In progress
+- Phase 3: Complete
 - Phase 4: Not started
 
 ### Execution Notes (2026-02-22)
@@ -326,7 +326,11 @@ function autoPlace(store: TLStore): { x: number, y: number }
 - Phase 2 was implemented with a line-based DSL parser (`src/dsl/parser.ts`) and `draw` command (`src/commands/draw.ts`) that accepts stdin/file input plus `--json`.
 - `stack` and `grid` layout helpers now exist in `src/store/layout.ts` and are used to expand layout blocks into explicit positioned shape operations.
 - Layout blocks currently disallow nested `stack`/`grid` blocks and arrow instructions; this keeps parsing deterministic for MVP scope.
+- Post-review hardening addressed edge cases: closing `]` lines with trailing comments, multi-word arrow targets, JSON arrow label targeting, and clearer JSON coordinate validation errors.
 - Validation for this phase includes unit tests for parser/layout plus command-level draw flow tests and manual CLI smoke runs.
+- Phase 3 export now uses a custom SVG renderer (`src/export/svg.ts`) for current CLI-supported shape types, plus PNG rendering via `@resvg/resvg-js` (`src/export/png.ts`).
+- `tldraw export` (`src/commands/export.ts`) supports format inference, explicit format selection, PNG scaling, padding, and background color overrides.
+- Export validation includes unit tests for SVG/PNG generation and manual CLI smoke export checks.
 
 ### Phase 1: Core (MVP)
 
@@ -360,12 +364,12 @@ function autoPlace(store: TLStore): { x: number, y: number }
 
 **Goal:** Render `.tldr` files to PNG and SVG.
 
-- [ ] `export/svg.ts` -- SVG export
+- [x] `export/svg.ts` -- SVG export
   - Fast path: custom SVG generation for simple geo/text shapes (no browser)
   - Full path: Playwright-based export for complex documents
-- [ ] `export/png.ts` -- PNG from SVG via `sharp` or `resvg-js`
-- [ ] `commands/export.ts` -- CLI wrapper with format detection, scale options
-- [ ] Tests for export output
+- [x] `export/png.ts` -- PNG from SVG via `sharp` or `resvg-js`
+- [x] `commands/export.ts` -- CLI wrapper with format detection, scale options
+- [x] Tests for export output
 
 **Deliverable:** `tldraw export wireframe.tldr -o wireframe.png` produces a clean image.
 

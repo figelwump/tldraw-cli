@@ -26,6 +26,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tldraw/store": "^4.4.0",
     "@tldraw/tlschema": "^4.4.0",
     "@tldraw/utils": "^4.4.0",
