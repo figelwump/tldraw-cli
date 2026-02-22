@@ -314,19 +314,33 @@ function autoPlace(store: TLStore): { x: number, y: number }
 
 ## Implementation Phases
 
+**Current status (2026-02-22):**
+
+- Phase 1: Complete
+- Phase 2: Complete
+- Phase 3: In progress
+- Phase 4: Not started
+
+### Execution Notes (2026-02-22)
+
+- Phase 2 was implemented with a line-based DSL parser (`src/dsl/parser.ts`) and `draw` command (`src/commands/draw.ts`) that accepts stdin/file input plus `--json`.
+- `stack` and `grid` layout helpers now exist in `src/store/layout.ts` and are used to expand layout blocks into explicit positioned shape operations.
+- Layout blocks currently disallow nested `stack`/`grid` blocks and arrow instructions; this keeps parsing deterministic for MVP scope.
+- Validation for this phase includes unit tests for parser/layout plus command-level draw flow tests and manual CLI smoke runs.
+
 ### Phase 1: Core (MVP)
 
 **Goal:** Create, add shapes, list, and produce valid `.tldr` files. No browser needed.
 
-- [ ] Project setup (package.json, tsconfig, commander.js)
-- [ ] `store/io.ts` -- Read/write `.tldr` files using `parseTldrawJsonFile` / `serializeTldrawJson`
-- [ ] `store/factory.ts` -- Shape record builders for `rect`, `ellipse`, `text`, `arrow`, `frame`, `note`
-- [ ] `commands/create.ts` -- Create empty `.tldr` file
-- [ ] `commands/add.ts` -- Add a single shape via CLI flags
-- [ ] `commands/list.ts` -- List shapes (table and JSON output)
-- [ ] `commands/remove.ts` -- Remove shapes by ID or label
-- [ ] `commands/info.ts` -- File inspection
-- [ ] Tests for store I/O, shape factory, all commands
+- [x] Project setup (package.json, tsconfig, commander.js)
+- [x] `store/io.ts` -- Read/write `.tldr` files using `parseTldrawJsonFile` / `serializeTldrawJson`
+- [x] `store/factory.ts` -- Shape record builders for `rect`, `ellipse`, `text`, `arrow`, `frame`, `note`
+- [x] `commands/create.ts` -- Create empty `.tldr` file
+- [x] `commands/add.ts` -- Add a single shape via CLI flags
+- [x] `commands/list.ts` -- List shapes (table and JSON output)
+- [x] `commands/remove.ts` -- Remove shapes by ID or label
+- [x] `commands/info.ts` -- File inspection
+- [x] Tests for store I/O, shape factory, all commands
 
 **Deliverable:** A working CLI that creates and manipulates `.tldr` files entirely headlessly. Files can be opened in tldraw.com to verify correctness.
 
@@ -334,11 +348,11 @@ function autoPlace(store: TLStore): { x: number, y: number }
 
 **Goal:** The `draw` command with DSL input -- the primary agent interface.
 
-- [ ] `dsl/parser.ts` -- Line-based DSL parser
-- [ ] `commands/draw.ts` -- Batch shape creation from DSL (stdin, file, or `--json`)
-- [ ] `store/layout.ts` -- `stack` and `grid` layout helpers
-- [ ] Auto-placement logic (when pos is omitted)
-- [ ] Tests for DSL parsing and layout
+- [x] `dsl/parser.ts` -- Line-based DSL parser
+- [x] `commands/draw.ts` -- Batch shape creation from DSL (stdin, file, or `--json`)
+- [x] `store/layout.ts` -- `stack` and `grid` layout helpers
+- [x] Auto-placement logic (when pos is omitted)
+- [x] Tests for DSL parsing and layout
 
 **Deliverable:** Agents can generate a DSL string and pipe it to `tldraw draw` to produce complete wireframes in one shot.
 
