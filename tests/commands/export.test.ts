@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -55,5 +55,49 @@ describe('export command', () => {
 
     const svg = await readFile(result.outputPath, 'utf8')
     expect(svg).toContain('<svg')
+  })
+
+  test('rejects format and output extension mismatches', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'canvas.tldr')
+
+    await createFile(filePath)
+    await addShapeToFile('rect', filePath, undefined, { label: 'Card', pos: '0,0', size: '100x60' })
+
+    await expect(exportFile(filePath, { format: 'svg', output: join(dir, 'canvas.png') })).rejects.toThrow(
+      'does not match format'
+    )
+  })
+
+  test('rejects nested shapes that fast SVG export cannot render', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'nested.tldr')
+    const svgPath = join(dir, 'nested.svg')
+
+    await createFile(filePath)
+    await addShapeToFile('frame', filePath, 'Container', { pos: '0,0', size: '400x300' })
+    await addShapeToFile('rect', filePath, undefined, { label: 'Child', pos: '20,20', size: '120x60' })
+
+    const payload = JSON.parse(await readFile(filePath, 'utf8')) as {
+      records: Array<Record<string, unknown>>
+      schema: unknown
+      tldrawFileFormatVersion: number
+    }
+    const frameRecord = payload.records.find(
+      (record) => record.typeName === 'shape' && record.type === 'frame'
+    )
+    const childRecord = payload.records.find(
+      (record) => record.typeName === 'shape' && record.type === 'geo'
+    )
+
+    if (!frameRecord || !childRecord || typeof frameRecord.id !== 'string') {
+      throw new Error('Failed to prepare nested shape test fixture')
+    }
+
+    childRecord.parentId = frameRecord.id
+
+    await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+
+    await expect(exportFile(filePath, { output: svgPath })).rejects.toThrow('nested/grouped shapes')
   })
 })

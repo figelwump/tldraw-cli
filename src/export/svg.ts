@@ -55,6 +55,13 @@ const STROKE_WIDTH_BY_SIZE: Record<TLDefaultSizeStyle, number> = {
   xl: 3
 }
 
+const NOTE_DIMENSIONS_BY_SIZE: Record<TLDefaultSizeStyle, { h: number; w: number }> = {
+  l: { h: 240, w: 280 },
+  m: { h: 180, w: 220 },
+  s: { h: 140, w: 180 },
+  xl: { h: 300, w: 340 }
+}
+
 const DASH_ARRAY_BY_STYLE: Record<TLDefaultDashStyle, string | null> = {
   dashed: '8 6',
   dotted: '2 6',
@@ -132,8 +139,7 @@ function textToSvg(text: string, x: number, y: number, options: {
   const tspanLines = [
     `<tspan x="${x}" y="${y}">${escapeXml(firstLine)}</tspan>`,
     ...remainder.map(
-      (line, index) =>
-        `<tspan x="${x}" dy="${index === 0 ? options.lineHeight : options.lineHeight}">${escapeXml(line)}</tspan>`
+      (line) => `<tspan x="${x}" dy="${options.lineHeight}">${escapeXml(line)}</tspan>`
     )
   ]
 
@@ -187,8 +193,9 @@ function renderTextShape(shape: TLTextShape): string {
 }
 
 function renderNoteShape(shape: TLNoteShape): string {
-  const width = 220
-  const height = 180
+  const dimensions = NOTE_DIMENSIONS_BY_SIZE[shape.props.size]
+  const width = dimensions.w
+  const height = dimensions.h
   const stroke = colorToHex(shape.props.color)
   const fill = getFillColor(shape.props.color, 'semi')
   const text = richTextToPlainText(shape.props.richText)
@@ -236,7 +243,10 @@ function renderArrowShape(shape: TLArrowShape): string {
   const endY = shape.y + shape.props.end.y
   const label = richTextToPlainText(shape.props.richText).trim()
 
-  const path = `<line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" color="${stroke}" stroke="${stroke}" stroke-width="${strokeWidth}" marker-end="url(#arrowhead)"${dash} />`
+  const endMarker = shape.props.arrowheadEnd !== 'none' ? ' marker-end="url(#arrowhead-end)"' : ''
+  const startMarker =
+    shape.props.arrowheadStart !== 'none' ? ' marker-start="url(#arrowhead-start)"' : ''
+  const path = `<line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" color="${stroke}" stroke="${stroke}" stroke-width="${strokeWidth}"${startMarker}${endMarker}${dash} />`
 
   if (!label) {
     return path
@@ -322,7 +332,18 @@ function sortShapesByIndex(shapes: TLShape[]): TLShape[] {
 }
 
 function getShapes(store: TLStore, pageId: TLPageId): TLShape[] {
-  return sortShapesByIndex(getShapesOnPage(store, pageId))
+  const pageShapes = getShapesOnPage(store, pageId)
+  const allShapes = store
+    .allRecords()
+    .filter((record): record is TLShape => record.typeName === 'shape')
+
+  if (allShapes.length !== pageShapes.length) {
+    throw new Error(
+      'Fast SVG export does not support nested/grouped shapes yet. Use top-level page shapes only.'
+    )
+  }
+
+  return sortShapesByIndex(pageShapes)
 }
 
 export function renderStoreToSvg(store: TLStore, options: SvgExportOptions = {}): string {
@@ -337,7 +358,10 @@ export function renderStoreToSvg(store: TLStore, options: SvgExportOptions = {})
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}" role="img" aria-label="tldraw export">`,
     '<defs>',
-    '<marker id="arrowhead" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">',
+    '<marker id="arrowhead-end" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">',
+    '<path d="M0,0 L10,4 L0,8 z" fill="currentColor" />',
+    '</marker>',
+    '<marker id="arrowhead-start" markerWidth="10" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="strokeWidth">',
     '<path d="M0,0 L10,4 L0,8 z" fill="currentColor" />',
     '</marker>',
     '</defs>',

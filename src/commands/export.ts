@@ -74,9 +74,16 @@ function inferFormatFromPath(outputPath: string | undefined): ExportFormat | nul
 }
 
 function resolveExportTarget(filePath: string, options: ExportCommandOptions): ExportResult {
-  const format = options.format
-    ? normalizeFormat(options.format)
-    : inferFormatFromPath(options.output) ?? 'png'
+  const inferredFormat = inferFormatFromPath(options.output)
+  const explicitFormat = options.format ? normalizeFormat(options.format) : null
+
+  if (explicitFormat && inferredFormat && explicitFormat !== inferredFormat) {
+    throw new Error(
+      `Output extension does not match format: --format ${explicitFormat} with output "${options.output}".`
+    )
+  }
+
+  const format = explicitFormat ?? inferredFormat ?? 'png'
 
   const outputPath = options.output
     ? resolve(options.output)
