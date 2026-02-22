@@ -189,6 +189,8 @@
       let debounceHandle = null
       let latestDocument = null
       let applyingRemoteUpdate = false
+      let reconnectDelayMs = 1000
+      let svgObjectUrl = null
 
       function setStatus(text, isError = false) {
         statusEl.textContent = text
@@ -196,7 +198,21 @@
       }
 
       function renderPreview(svg) {
-        svgPreview.innerHTML = svg
+        if (svgObjectUrl) {
+          URL.revokeObjectURL(svgObjectUrl)
+          svgObjectUrl = null
+        }
+
+        const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
+        svgObjectUrl = URL.createObjectURL(svgBlob)
+
+        svgPreview.innerHTML = ''
+        const image = document.createElement('img')
+        image.src = svgObjectUrl
+        image.alt = 'tldraw preview'
+        image.style.maxWidth = '100%'
+        image.style.height = 'auto'
+        svgPreview.appendChild(image)
       }
 
       function applyDocument(document, svg) {
@@ -228,12 +244,14 @@
         socket = new WebSocket(`${protocol}//${window.location.host}/ws`)
 
         socket.addEventListener('open', () => {
+          reconnectDelayMs = 1000
           setStatus('Connected')
         })
 
         socket.addEventListener('close', () => {
-          setStatus('Disconnected. Retrying in 1s…', true)
-          window.setTimeout(connect, 1000)
+          setStatus(`Disconnected. Retrying in ${Math.round(reconnectDelayMs / 1000)}s…`, true)
+          window.setTimeout(connect, reconnectDelayMs)
+          reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000)
         })
 
         socket.addEventListener('message', (event) => {

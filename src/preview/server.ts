@@ -1,6 +1,7 @@
 import { watch as fsWatch } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { Socket } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -155,20 +156,28 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
   const readonly = config.readonly ?? false
   const watchFile = config.watch ?? false
   const clients = new Set<WebSocket>()
+  const sockets = new Set<Socket>()
+  let publishQueue: Promise<void> = Promise.resolve()
+  let lastSelfWriteAt = 0
 
   const publishDocument = async () => {
-    const document = await readPreviewDocument(config.filePath)
-    const svg = await exportFileToSvg(config.filePath)
-    const message: ServerToClientMessage = {
-      document,
-      readonly,
-      svg,
-      type: 'document'
+    const runPublish = async () => {
+      const document = await readPreviewDocument(config.filePath)
+      const svg = await exportFileToSvg(config.filePath)
+      const message: ServerToClientMessage = {
+        document,
+        readonly,
+        svg,
+        type: 'document'
+      }
+
+      for (const client of clients) {
+        sendMessage(client, message)
+      }
     }
 
-    for (const client of clients) {
-      sendMessage(client, message)
-    }
+    publishQueue = publishQueue.then(runPublish, runPublish)
+    await publishQueue
   }
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -192,6 +201,13 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
 
   const wsServer = new WebSocketServer({ noServer: true })
 
+  server.on('connection', (socket) => {
+    sockets.add(socket)
+    socket.on('close', () => {
+      sockets.delete(socket)
+    })
+  })
+
   server.on('upgrade', (request, socket, head) => {
     const requestUrl = request.url ?? ''
     if (!requestUrl.startsWith('/ws')) {
@@ -212,6 +228,10 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
       clients.delete(ws)
     })
 
+    ws.on('error', () => {
+      clients.delete(ws)
+    })
+
     ws.on('message', async (payload) => {
       try {
         const message = parseClientMessage(String(payload))
@@ -229,6 +249,7 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
         }
 
         const document = toPreviewDocument(message.document)
+        lastSelfWriteAt = Date.now()
         await writeFile(config.filePath, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
         await publishDocument()
         sendMessage(ws, { type: 'saved' })
@@ -256,6 +277,10 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
   const watcher = watchFile
     ? fsWatch(config.filePath, { persistent: false }, async (event) => {
         if (event !== 'change' && event !== 'rename') {
+          return
+        }
+
+        if (Date.now() - lastSelfWriteAt < 300) {
           return
         }
 
@@ -293,6 +318,10 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
           // Ignore close errors.
         }
       })
+
+      for (const socket of sockets) {
+        socket.destroy()
+      }
 
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

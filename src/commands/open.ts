@@ -26,25 +26,32 @@ function parsePort(value: string | undefined): number {
 
 async function openUrl(url: string): Promise<void> {
   const platform = process.platform
+  const runCommand = (command: string, args: string[], windowsHide = false) =>
+    new Promise<void>((resolve, reject) => {
+      const child = spawn(command, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide
+      })
+
+      child.once('error', reject)
+      child.once('spawn', () => {
+        child.unref()
+        resolve()
+      })
+    })
 
   if (platform === 'darwin') {
-    const child = spawn('open', [url], { detached: true, stdio: 'ignore' })
-    child.unref()
+    await runCommand('open', [url])
     return
   }
 
   if (platform === 'win32') {
-    const child = spawn('cmd', ['/c', 'start', '', url], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    })
-    child.unref()
+    await runCommand('cmd', ['/c', 'start', '', url], true)
     return
   }
 
-  const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' })
-  child.unref()
+  await runCommand('xdg-open', [url])
 }
 
 export async function startOpenSession(

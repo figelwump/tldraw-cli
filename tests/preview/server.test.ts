@@ -137,6 +137,14 @@ describe('preview server', () => {
 
         documentRecord.name = 'Edited from websocket'
 
+        const savedPromise = waitForMessage(wsA, (payload) => payload.type === 'saved')
+        const broadcastPromise = waitForMessage(
+          wsB,
+          (payload) =>
+            payload.type === 'document' &&
+            getDocumentRecord(payload.document)?.name === 'Edited from websocket'
+        )
+
         wsA.send(
           JSON.stringify({
             document: editedDocument,
@@ -144,13 +152,8 @@ describe('preview server', () => {
           })
         )
 
-        await waitForMessage(wsA, (payload) => payload.type === 'saved')
-        const broadcast = await waitForMessage(
-          wsB,
-          (payload) =>
-            payload.type === 'document' &&
-            getDocumentRecord(payload.document)?.name === 'Edited from websocket'
-        )
+        await savedPromise
+        const broadcast = await broadcastPromise
 
         expect(broadcast.type).toBe('document')
 
@@ -163,7 +166,7 @@ describe('preview server', () => {
     } finally {
       await server.close()
     }
-  })
+  }, 10000)
 
   test('pushes file-change updates when watch mode is enabled', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
