@@ -6,6 +6,7 @@ import { registerDrawCommand } from './commands/draw.js'
 import { registerExportCommand } from './commands/export.js'
 import { registerInfoCommand } from './commands/info.js'
 import { registerListCommand } from './commands/list.js'
+import { registerOpenCommand } from './commands/open.js'
 import { registerRemoveCommand } from './commands/remove.js'
 
 export function createProgram(): Command {
@@ -20,6 +21,7 @@ export function createProgram(): Command {
   registerAddCommand(program)
   registerDrawCommand(program)
   registerExportCommand(program)
+  registerOpenCommand(program)
   registerListCommand(program)
   registerRemoveCommand(program)
   registerInfoCommand(program)

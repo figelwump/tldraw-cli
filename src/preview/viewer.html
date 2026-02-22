@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tldraw-cli preview</title>
+    <style>
+      :root {
+        --bg: #f3f5f8;
+        --panel: #ffffff;
+        --line: #d9dee5;
+        --ink: #1b2638;
+        --muted: #5f6f85;
+        --accent: #0d7a6e;
+        --danger: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at 10% -10%, #e4f5f2 0%, var(--bg) 40%);
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+
+      .layout {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in oklab, var(--panel) 85%, transparent);
+        backdrop-filter: blur(6px);
+      }
+
+      .title {
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .status {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .panes {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 10px;
+        padding: 10px;
+      }
+
+      .panel {
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--panel);
+        box-shadow: 0 8px 30px rgba(16, 24, 40, 0.06);
+      }
+
+      .panel-head {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      #svg-preview {
+        height: 100%;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      #json-editor {
+        width: 100%;
+        height: calc(100% - 38px);
+        border: 0;
+        margin: 0;
+        resize: none;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.55;
+        font-family: "IBM Plex Mono", "SF Mono", monospace;
+        color: #0f1728;
+      }
+
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 14px;
+        border-top: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .help {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        color: #fff;
+        background: var(--accent);
+      }
+
+      button.secondary {
+        background: #3f516d;
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      @media (max-width: 880px) {
+        .panes {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="title">tldraw-cli Live Preview</div>
+        <div id="status" class="status">Connecting…</div>
+      </header>
+      <main class="panes">
+        <section class="panel">
+          <div class="panel-head">Canvas Preview (SVG)</div>
+          <div id="svg-preview"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">Document JSON</div>
+          <textarea id="json-editor" spellcheck="false"></textarea>
+        </section>
+      </main>
+      <footer class="footer">
+        <div class="help">Edits in JSON are auto-saved. External file changes sync back when watch mode is enabled.</div>
+        <div class="actions">
+          <button id="reload" class="secondary" type="button">Reload</button>
+          <button id="save" type="button">Save</button>
+        </div>
+      </footer>
+    </div>
+    <!--__TLDRAW_PREVIEW_CONFIG__-->
+    <script type="module">
+      const config = window.__TLDRAW_PREVIEW_CONFIG__ ?? { readonly: false }
+      const statusEl = document.getElementById('status')
+      const jsonEditor = document.getElementById('json-editor')
+      const svgPreview = document.getElementById('svg-preview')
+      const saveButton = document.getElementById('save')
+      const reloadButton = document.getElementById('reload')
+
+      let socket = null
+      let debounceHandle = null
+      let latestDocument = null
+      let applyingRemoteUpdate = false
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text
+        statusEl.classList.toggle('error', isError)
+      }
+
+      function renderPreview(svg) {
+        svgPreview.innerHTML = svg
+      }
+
+      function applyDocument(document, svg) {
+        latestDocument = document
+        applyingRemoteUpdate = true
+        jsonEditor.value = JSON.stringify(document, null, 2)
+        applyingRemoteUpdate = false
+
+        renderPreview(svg)
+      }
+
+      function sendSave() {
+        if (config.readonly || !socket || socket.readyState !== WebSocket.OPEN) {
+          return
+        }
+
+        try {
+          const parsed = JSON.parse(jsonEditor.value)
+          socket.send(JSON.stringify({ type: 'save', document: parsed }))
+          setStatus('Saving…')
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          setStatus(`Invalid JSON: ${message}`, true)
+        }
+      }
+
+      function connect() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        socket = new WebSocket(`${protocol}//${window.location.host}/ws`)
+
+        socket.addEventListener('open', () => {
+          setStatus('Connected')
+        })
+
+        socket.addEventListener('close', () => {
+          setStatus('Disconnected. Retrying in 1s…', true)
+          window.setTimeout(connect, 1000)
+        })
+
+        socket.addEventListener('message', (event) => {
+          try {
+            const message = JSON.parse(event.data)
+
+            if (message.type === 'document') {
+              applyDocument(message.document, message.svg)
+              setStatus(message.readonly ? 'Connected (readonly)' : 'Connected')
+              return
+            }
+
+            if (message.type === 'saved') {
+              setStatus('Saved')
+              return
+            }
+
+            if (message.type === 'error') {
+              setStatus(message.message, true)
+              return
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            setStatus(`Message error: ${message}`, true)
+          }
+        })
+      }
+
+      jsonEditor.addEventListener('input', () => {
+        if (config.readonly || applyingRemoteUpdate) {
+          return
+        }
+
+        if (debounceHandle) {
+          window.clearTimeout(debounceHandle)
+        }
+
+        debounceHandle = window.setTimeout(sendSave, 700)
+      })
+
+      saveButton.addEventListener('click', () => {
+        sendSave()
+      })
+
+      reloadButton.addEventListener('click', () => {
+        if (!latestDocument) {
+          return
+        }
+
+        applyingRemoteUpdate = true
+        jsonEditor.value = JSON.stringify(latestDocument, null, 2)
+        applyingRemoteUpdate = false
+        setStatus('Editor reloaded from latest synced state')
+      })
+
+      if (config.readonly) {
+        jsonEditor.disabled = true
+        saveButton.disabled = true
+      }
+
+      connect()
+    </script>
+  </body>
+</html>

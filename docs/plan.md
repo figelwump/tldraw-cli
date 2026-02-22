@@ -319,7 +319,7 @@ function autoPlace(store: TLStore): { x: number, y: number }
 - Phase 1: Complete
 - Phase 2: Complete
 - Phase 3: Complete
-- Phase 4: Not started
+- Phase 4: Complete (with adjusted viewer scope; see notes)
 
 ### Execution Notes (2026-02-22)
 
@@ -331,6 +331,10 @@ function autoPlace(store: TLStore): { x: number, y: number }
 - Phase 3 export now uses a custom SVG renderer (`src/export/svg.ts`) for current CLI-supported shape types, plus PNG rendering via `@resvg/resvg-js` (`src/export/png.ts`).
 - `tldraw export` (`src/commands/export.ts`) supports format inference, explicit format selection, PNG scaling, padding, and background color overrides.
 - Export validation includes unit tests for SVG/PNG generation and manual CLI smoke export checks.
+- Post-review hardening for export added explicit failure for unsupported nested/grouped shapes in fast-path SVG export and validation for format/output extension mismatches.
+- Phase 4 delivers a local preview server (`src/preview/server.ts`) and `open` command (`src/commands/open.ts`) with websocket-based bidirectional file sync.
+- Plan adjustment: `preview/viewer.html` is implemented as a lightweight live SVG + JSON editor (not a bundled React tldraw app) to keep Phase 4 headless-friendly and testable in CLI workflows.
+- Preview validation includes websocket integration tests (server push + client save + watch mode) and a CLI smoke run for server startup/health.
 
 ### Phase 1: Core (MVP)
 
@@ -377,12 +381,12 @@ function autoPlace(store: TLStore): { x: number, y: number }
 
 **Goal:** Interactive browser-based viewing and editing.
 
-- [ ] `preview/server.ts` -- Local HTTP server with WebSocket for file sync
-- [ ] `preview/viewer.html` -- Minimal tldraw React app (bundled)
-- [ ] `commands/open.ts` -- Open command with `--watch`, `--readonly`, `--port`
-- [ ] Bidirectional sync: file changes push to browser, browser changes save to file
+- [x] `preview/server.ts` -- Local HTTP server with WebSocket for file sync
+- [x] `preview/viewer.html` -- Lightweight live SVG + JSON viewer/editor
+- [x] `commands/open.ts` -- Open command with `--watch`, `--readonly`, `--port`
+- [x] Bidirectional sync: file changes push to browser, browser changes save to file
 
-**Deliverable:** `tldraw open wireframe.tldr` opens a full tldraw editor in the browser, synced to the file.
+**Deliverable:** `tldraw open wireframe.tldr` starts a local synced preview/editor in the browser with live file round-tripping.
 
 ## Tech Stack
 
