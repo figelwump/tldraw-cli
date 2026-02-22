@@ -218,7 +218,15 @@ function parseArrowInstruction(tokens: Token[], context: string): DrawInstructio
     .map((token) => token.value)
     .join(' ')
     .trim()
-  const to = tokens[connectorIndex + 1]?.value
+
+  const trailingTokens = tokens.slice(connectorIndex + 1)
+  const optionStartIndex = trailingTokens.findIndex((token) => isKeyValueToken(token.value))
+  const toTokens =
+    optionStartIndex === -1 ? trailingTokens : trailingTokens.slice(0, optionStartIndex)
+  const to = toTokens
+    .map((token) => token.value)
+    .join(' ')
+    .trim()
 
   if (!from || !to) {
     throw new Error(`Invalid arrow endpoints in ${context}`)
@@ -229,16 +237,10 @@ function parseArrowInstruction(tokens: Token[], context: string): DrawInstructio
     to
   }
 
-  let content: string | undefined
-  let cursor = connectorIndex + 2
+  const cursorStart =
+    optionStartIndex === -1 ? tokens.length : connectorIndex + 1 + optionStartIndex
 
-  const firstAfterTarget = tokens[cursor]
-  if (firstAfterTarget && !isKeyValueToken(firstAfterTarget.value)) {
-    content = firstAfterTarget.value
-    cursor += 1
-  }
-
-  for (; cursor < tokens.length; cursor += 1) {
+  for (let cursor = cursorStart; cursor < tokens.length; cursor += 1) {
     const token = tokens[cursor]
     if (!token) {
       continue
@@ -251,12 +253,7 @@ function parseArrowInstruction(tokens: Token[], context: string): DrawInstructio
     parseOptionToken(token, options, context, true)
   }
 
-  if (content && options.label) {
-    throw new Error(`Arrow label was provided twice in ${context}`)
-  }
-
   return {
-    ...(content ? { content } : {}),
     options,
     shape: 'arrow'
   }
@@ -313,17 +310,23 @@ function parseBasicShapeInstruction(
   }
 
   if (shape === 'text' || shape === 'note') {
+    if (content && options.label && options.label !== content) {
+      throw new Error(`Text content was provided twice in ${context}`)
+    }
+
     const textContent = content ?? options.label
+    const { label: _unusedLabel, ...contentOptions } = options
+
     if (textContent) {
       return {
         content: textContent,
-        options,
+        options: contentOptions,
         shape
       }
     }
 
     return {
-      options,
+      options: contentOptions,
       shape
     }
   }
@@ -490,7 +493,10 @@ function parseStackBlock(lines: string[], startIndex: number, headerLine: string
     nested.push(parsed)
   }
 
-  if (index >= lines.length || lines[index]?.trim() !== ']') {
+  const closingLine = lines[index]
+  const normalizedClosingLine = closingLine ? stripInlineComment(closingLine).trim() : ''
+
+  if (index >= lines.length || normalizedClosingLine !== ']') {
     throw new Error(`Unterminated stack block starting at ${context}`)
   }
 
@@ -552,7 +558,10 @@ function parseGridBlock(lines: string[], startIndex: number, headerLine: string)
     nested.push(parsed)
   }
 
-  if (index >= lines.length || lines[index]?.trim() !== ']') {
+  const closingLine = lines[index]
+  const normalizedClosingLine = closingLine ? stripInlineComment(closingLine).trim() : ''
+
+  if (index >= lines.length || normalizedClosingLine !== ']') {
     throw new Error(`Unterminated grid block starting at ${context}`)
   }
 

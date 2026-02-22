@@ -96,4 +96,34 @@ describe('draw command', () => {
     expect(rows.find((row) => row.label === 'Header')).toBeDefined()
     expect(rows.find((row) => row.type === 'text')?.label).toBe('Page Title')
   })
+
+  test('supports JSON arrows that target labels', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'draw-json-arrow.tldr')
+
+    await createFile(filePath)
+
+    await drawFromJson(
+      filePath,
+      JSON.stringify([
+        { h: 40, label: 'Header', shape: 'rect', w: 240, x: 0, y: 0 },
+        { h: 120, label: 'Body', shape: 'rect', w: 240, x: 0, y: 100 },
+        { from: 'Header', shape: 'arrow', to: 'Body' }
+      ])
+    )
+
+    const rows = toShapeListRows(await listShapes(filePath))
+    expect(rows.find((row) => row.type === 'arrow')).toBeDefined()
+  })
+
+  test('rejects partial coordinate geometry in JSON mode', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'draw-json-invalid.tldr')
+
+    await createFile(filePath)
+
+    await expect(
+      drawFromJson(filePath, JSON.stringify([{ shape: 'rect', w: 200, x: 0, y: 0 }]))
+    ).rejects.toThrow('must provide both w and h')
+  })
 })

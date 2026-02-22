@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises'
 import type { Command } from 'commander'
 
 import { addShapeToFile, type AddShapeCommandOptions } from './add.js'
-import { parsePosition } from './parsers.js'
 import { parseDsl, type DrawInstruction } from '../dsl/parser.js'
 
 type DrawCommandOptions = {
@@ -33,10 +32,14 @@ function toNumber(value: unknown, label: string): number {
   return value
 }
 
-function toPointString(value: unknown, label: string): string {
+function toArrowTargetString(value: unknown, label: string): string {
   if (typeof value === 'string') {
-    parsePosition(value)
-    return value
+    const target = value.trim()
+    if (target.length === 0) {
+      throw new Error(`Invalid ${label}`)
+    }
+
+    return target
   }
 
   if (Array.isArray(value) && value.length === 2) {
@@ -100,8 +103,21 @@ function normalizeJsonInstruction(raw: unknown, index: number): NormalizedJsonIn
   }
 
   const applyGeometry = (options: AddShapeCommandOptions): AddShapeCommandOptions => {
-    const hasPosition = typeof raw.x === 'number' || typeof raw.y === 'number'
-    const hasDimensions = typeof raw.w === 'number' || typeof raw.h === 'number'
+    const hasX = typeof raw.x === 'number'
+    const hasY = typeof raw.y === 'number'
+    const hasW = typeof raw.w === 'number'
+    const hasH = typeof raw.h === 'number'
+
+    if (hasX !== hasY) {
+      throw new Error(`Instruction at index ${index} must provide both x and y`)
+    }
+
+    if (hasW !== hasH) {
+      throw new Error(`Instruction at index ${index} must provide both w and h`)
+    }
+
+    const hasPosition = hasX && hasY
+    const hasDimensions = hasW && hasH
 
     return {
       ...options,
@@ -133,8 +149,8 @@ function normalizeJsonInstruction(raw: unknown, index: number): NormalizedJsonIn
         ...(content ? { content } : {}),
         options: {
           ...baseOptions,
-          from: toPointString(raw.from, `instruction[${index}].from`),
-          to: toPointString(raw.to, `instruction[${index}].to`)
+          from: toArrowTargetString(raw.from, `instruction[${index}].from`),
+          to: toArrowTargetString(raw.to, `instruction[${index}].to`)
         },
         shape
       }
@@ -178,8 +194,8 @@ function normalizeJsonInstruction(raw: unknown, index: number): NormalizedJsonIn
       ...(content ? { content } : {}),
       options: {
         ...baseOptions,
-        from: toPointString(raw.from, `instruction[${index}].from`),
-        to: toPointString(raw.to, `instruction[${index}].to`)
+        from: toArrowTargetString(raw.from, `instruction[${index}].from`),
+        to: toArrowTargetString(raw.to, `instruction[${index}].to`)
       },
       shape: 'arrow'
     }

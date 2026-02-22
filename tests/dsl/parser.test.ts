@@ -96,4 +96,36 @@ describe('dsl parser', () => {
       `)
     ).toThrow('Arrow instructions are not supported')
   })
+
+  test('allows layout block closing bracket with trailing comments', () => {
+    const instructions = parseDsl(`
+      stack vertical 0,0 gap=10 [
+        rect 100x40 "A"
+      ] # close stack
+    `)
+
+    expect(instructions).toHaveLength(1)
+    expect(instructions[0]?.options.pos).toBe('0,0')
+  })
+
+  test('parses multi-word arrow endpoints without quotes', () => {
+    const instructions = parseDsl(`
+      arrow Source Node -> Target Node color=red
+    `)
+
+    expect(instructions).toEqual([
+      {
+        options: {
+          color: 'red',
+          from: 'Source Node',
+          to: 'Target Node'
+        },
+        shape: 'arrow'
+      }
+    ])
+  })
+
+  test('rejects duplicate text content declarations', () => {
+    expect(() => parseDsl(`text 0,0 "Hello" label=World`)).toThrow('provided twice')
+  })
 })
