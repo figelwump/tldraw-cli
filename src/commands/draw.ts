@@ -92,14 +92,41 @@ function normalizeJsonInstruction(raw: unknown, index: number): NormalizedJsonIn
   const descriptor = toShapeAndGeo(raw)
   const content = toOptionalString(raw.content) ?? toOptionalString(raw.text)
 
-  const baseOptions: AddShapeCommandOptions = {
-    ...(toOptionalString(raw.color) ? { color: toOptionalString(raw.color) } : {}),
-    ...(toOptionalString(raw.dash) ? { dash: toOptionalString(raw.dash) } : {}),
-    ...(toOptionalString(raw.fill) ? { fill: toOptionalString(raw.fill) } : {}),
-    ...(toOptionalString(raw.font) ? { font: toOptionalString(raw.font) } : {}),
-    ...(toOptionalString(raw.id) ? { id: toOptionalString(raw.id) } : {}),
-    ...(toOptionalString(raw.label) ? { label: toOptionalString(raw.label) } : {}),
-    ...(toOptionalSize(raw.size) ? { size: toOptionalSize(raw.size) } : {})
+  const baseOptions: AddShapeCommandOptions = {}
+  const color = toOptionalString(raw.color)
+  const dash = toOptionalString(raw.dash)
+  const fill = toOptionalString(raw.fill)
+  const font = toOptionalString(raw.font)
+  const id = toOptionalString(raw.id)
+  const label = toOptionalString(raw.label)
+  const size = toOptionalSize(raw.size)
+
+  if (color) {
+    baseOptions.color = color
+  }
+
+  if (dash) {
+    baseOptions.dash = dash
+  }
+
+  if (fill) {
+    baseOptions.fill = fill
+  }
+
+  if (font) {
+    baseOptions.font = font
+  }
+
+  if (id) {
+    baseOptions.id = id
+  }
+
+  if (label) {
+    baseOptions.label = label
+  }
+
+  if (size) {
+    baseOptions.size = size
   }
 
   const applyGeometry = (options: AddShapeCommandOptions): AddShapeCommandOptions => {

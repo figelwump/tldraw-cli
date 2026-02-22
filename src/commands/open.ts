@@ -61,8 +61,8 @@ export async function startOpenSession(
   const session = await startPreviewServer({
     filePath,
     port: parsePort(options.port),
-    readonly: options.readonly,
-    watch: options.watch
+    ...(options.readonly !== undefined ? { readonly: options.readonly } : {}),
+    ...(options.watch !== undefined ? { watch: options.watch } : {})
   })
 
   if (options.browser !== false) {

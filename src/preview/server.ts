@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { Socket } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
-import { WebSocketServer, type WebSocket } from 'ws'
+import WebSocket, { WebSocketServer } from 'ws'
 
 import { exportFileToSvg } from '../export/svg.js'
 
@@ -50,6 +50,8 @@ type ClientToServerMessage =
   | {
       type: 'ping'
     }
+
+type PreviewSocket = WebSocket
 
 const VIEWER_HTML_PATH_CANDIDATES = [
   fileURLToPath(new URL('./viewer.html', import.meta.url)),
@@ -126,7 +128,7 @@ function parseClientMessage(raw: string): ClientToServerMessage {
   throw new Error('Unsupported preview message type')
 }
 
-function sendMessage(ws: WebSocket, message: ServerToClientMessage): void {
+function sendMessage(ws: PreviewSocket, message: ServerToClientMessage): void {
   if (ws.readyState !== ws.OPEN) {
     return
   }
@@ -155,7 +157,7 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
   const viewerTemplate = await readViewerTemplate()
   const readonly = config.readonly ?? false
   const watchFile = config.watch ?? false
-  const clients = new Set<WebSocket>()
+  const clients = new Set<PreviewSocket>()
   const sockets = new Set<Socket>()
   let publishQueue: Promise<void> = Promise.resolve()
   let lastSelfWriteAt = 0
@@ -216,12 +218,12 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
       return
     }
 
-    wsServer.handleUpgrade(request, socket, head, (ws) => {
+    wsServer.handleUpgrade(request, socket, head, (ws: PreviewSocket) => {
       wsServer.emit('connection', ws, request)
     })
   })
 
-  wsServer.on('connection', async (ws) => {
+  wsServer.on('connection', async (ws: PreviewSocket) => {
     clients.add(ws)
 
     ws.on('close', () => {
@@ -232,7 +234,7 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
       clients.delete(ws)
     })
 
-    ws.on('message', async (payload) => {
+    ws.on('message', async (payload: WebSocket.RawData) => {
       try {
         const message = parseClientMessage(String(payload))
 
@@ -311,7 +313,7 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
   return {
     close: async () => {
       watcher?.close()
-      wsServer.clients.forEach((client) => {
+      wsServer.clients.forEach((client: PreviewSocket) => {
         try {
           client.close()
         } catch {

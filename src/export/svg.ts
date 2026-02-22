@@ -2,6 +2,7 @@ import type {
   TLArrowShape,
   TLDefaultColorStyle,
   TLDefaultDashStyle,
+  TLDefaultFillStyle,
   TLDefaultFontStyle,
   TLDefaultSizeStyle,
   TLFrameShape,
@@ -31,6 +32,7 @@ const COLOR_HEX_BY_STYLE: Record<TLDefaultColorStyle, string> = {
   orange: '#f08c00',
   red: '#e03131',
   violet: '#7048e8',
+  white: '#ffffff',
   yellow: '#f6c344'
 }
 
@@ -110,18 +112,18 @@ function getStrokeDashAttributes(dash: TLDefaultDashStyle | undefined): string {
 
 function getFillColor(
   color: TLDefaultColorStyle | string | undefined,
-  fill: 'none' | 'pattern' | 'semi' | 'solid' | undefined
+  fill: TLDefaultFillStyle | undefined
 ): string {
   if (!fill || fill === 'none') {
     return 'none'
   }
 
   const resolvedColor = colorToHex(color)
-  if (fill === 'solid') {
+  if (fill === 'solid' || fill === 'fill') {
     return resolvedColor
   }
 
-  // `semi` and `pattern` both map to a translucent fill for this fast-path export.
+  // `semi`, `pattern`, and `lined-fill` map to a translucent fill for this fast-path export.
   return `${resolvedColor}33`
 }
 
