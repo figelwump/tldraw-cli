@@ -16,6 +16,7 @@ import { createShapeRecord } from '../store/factory.js'
 import { autoPlace } from '../store/layout.js'
 import { getCurrentPageId, getShapesOnPage, readTldrawFile, writeTldrawFile } from '../store/io.js'
 import { getShapeCenter, getShapeLabel } from '../store/shapes.js'
+import { estimateLabelDimensions } from '../store/text.js'
 
 const SUPPORTED_SHAPES = ['arrow', 'ellipse', 'frame', 'note', 'rect', 'text'] as const
 type SupportedShape = (typeof SUPPORTED_SHAPES)[number]
@@ -161,9 +162,26 @@ export async function addShapeToFile(
     ...(sizeStyle ? { size: sizeStyle } : {})
   }
 
+  // Auto-expand dimensions to fit label text, ensuring shapes are always
+  // at least big enough for their label content.
+  function expandForLabel(
+    baseDimensions: { h: number; w: number },
+    label: string | undefined
+  ): { h: number; w: number } {
+    if (!label) return baseDimensions
+    const labelDims = estimateLabelDimensions(label, sizeStyle ?? undefined, options.font)
+    return {
+      h: Math.max(baseDimensions.h, labelDims.h),
+      w: Math.max(baseDimensions.w, labelDims.w)
+    }
+  }
+
   const shapeRecord = (() => {
     if (shapeType === 'rect') {
-      const shapeDimensions = dimensions ?? DEFAULT_DIMENSIONS_BY_SHAPE.rect
+      const shapeDimensions = expandForLabel(
+        dimensions ?? DEFAULT_DIMENSIONS_BY_SHAPE.rect,
+        options.label
+      )
       return createShapeRecord({
         ...sharedStyle,
         geo: 'rectangle',
@@ -175,7 +193,10 @@ export async function addShapeToFile(
     }
 
     if (shapeType === 'ellipse') {
-      const shapeDimensions = dimensions ?? DEFAULT_DIMENSIONS_BY_SHAPE.ellipse
+      const shapeDimensions = expandForLabel(
+        dimensions ?? DEFAULT_DIMENSIONS_BY_SHAPE.ellipse,
+        options.label
+      )
       return createShapeRecord({
         ...sharedStyle,
         geo: 'ellipse',

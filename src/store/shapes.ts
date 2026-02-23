@@ -9,25 +9,13 @@ import type {
   TLTextShape
 } from '@tldraw/tlschema'
 
+import { NOTE_DIMENSIONS_BY_SIZE, TEXT_LINE_HEIGHT_BY_SIZE } from './text.js'
+
 type RichTextNode = {
   content?: RichTextNode[]
   text?: string
   type: string
 }
-
-const NOTE_DIMENSIONS_BY_SIZE = {
-  l: { h: 240, w: 280 },
-  m: { h: 180, w: 220 },
-  s: { h: 140, w: 180 },
-  xl: { h: 300, w: 340 }
-} as const
-
-const TEXT_LINE_HEIGHT_BY_SIZE = {
-  l: 36,
-  m: 28,
-  s: 22,
-  xl: 44
-} as const
 
 function richTextNodeToPlainText(node: RichTextNode): string {
   if (node.type === 'text') {
@@ -69,14 +57,14 @@ function getShapeSize(shape: TLShape): { h: number; w: number } | null {
   if (shape.type === 'text') {
     const textShape = shape as TLTextShape
     const lineCount = Math.max(1, richTextToPlainText(textShape.props.richText).split('\n').length)
-    const lineHeight = TEXT_LINE_HEIGHT_BY_SIZE[textShape.props.size]
+    const lineHeight = TEXT_LINE_HEIGHT_BY_SIZE[textShape.props.size] ?? 28
     return { h: lineCount * lineHeight, w: Math.max(40, textShape.props.w) }
   }
 
   if (shape.type === 'note') {
     const noteShape = shape as TLNoteShape
     const dimensions = NOTE_DIMENSIONS_BY_SIZE[noteShape.props.size]
-    return dimensions
+    return dimensions ?? null
   }
 
   if (shape.type === 'arrow') {

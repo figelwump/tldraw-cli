@@ -16,6 +16,7 @@ import type {
 
 import { getCurrentPageId, getShapesOnPage, readTldrawFile } from '../store/io.js'
 import { getShapeBounds, richTextToPlainText } from '../store/shapes.js'
+import { NOTE_DIMENSIONS_BY_SIZE } from '../store/text.js'
 
 const DEFAULT_BACKGROUND = '#ffffff'
 const DEFAULT_PADDING = 24
@@ -55,13 +56,6 @@ const STROKE_WIDTH_BY_SIZE: Record<TLDefaultSizeStyle, number> = {
   m: 2,
   s: 1.5,
   xl: 3
-}
-
-const NOTE_DIMENSIONS_BY_SIZE: Record<TLDefaultSizeStyle, { h: number; w: number }> = {
-  l: { h: 240, w: 280 },
-  m: { h: 180, w: 220 },
-  s: { h: 140, w: 180 },
-  xl: { h: 300, w: 340 }
 }
 
 const DASH_ARRAY_BY_STYLE: Record<TLDefaultDashStyle, string | null> = {
@@ -195,7 +189,7 @@ function renderTextShape(shape: TLTextShape): string {
 }
 
 function renderNoteShape(shape: TLNoteShape): string {
-  const dimensions = NOTE_DIMENSIONS_BY_SIZE[shape.props.size]
+  const dimensions = NOTE_DIMENSIONS_BY_SIZE[shape.props.size] ?? { h: 180, w: 220 }
   const width = dimensions.w
   const height = dimensions.h
   const stroke = colorToHex(shape.props.color)

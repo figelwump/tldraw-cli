@@ -1,9 +1,12 @@
 import { readFile } from 'node:fs/promises'
 
+import type { TLFrameShape, TLShape } from '@tldraw/tlschema'
 import type { Command } from 'commander'
 
 import { addShapeToFile, type AddShapeCommandOptions } from './add.js'
 import { parseDsl, type DrawInstruction } from '../dsl/parser.js'
+import { getCurrentPageId, getShapesOnPage, readTldrawFile, writeTldrawFile } from '../store/io.js'
+import { getShapeBounds } from '../store/shapes.js'
 
 type DrawCommandOptions = {
   file?: string
@@ -274,6 +277,100 @@ async function readDrawInput(options: DrawCommandOptions): Promise<string> {
   return input
 }
 
+const FRAME_EXPANSION_PADDING = 20
+
+// Tolerance for center-point containment check. Shapes whose center falls
+// within the frame bounds (extended by this amount on all sides) are
+// considered "contained" and trigger frame expansion.
+const FRAME_CONTAINMENT_TOLERANCE = 200
+
+/**
+ * Check whether a shape's center point falls within the frame's bounding box
+ * (with symmetric tolerance), indicating it is "contained" by the frame.
+ * This is a visual heuristic — it does NOT re-parent shapes into the frame.
+ */
+function isShapeContainedByFrame(shape: TLShape, frame: TLFrameShape): boolean {
+  const bounds = getShapeBounds(shape)
+  const centerX = bounds.x + bounds.w / 2
+  const centerY = bounds.y + bounds.h / 2
+
+  return (
+    centerX >= frame.x - FRAME_CONTAINMENT_TOLERANCE &&
+    centerX <= frame.x + frame.props.w + FRAME_CONTAINMENT_TOLERANCE &&
+    centerY >= frame.y - FRAME_CONTAINMENT_TOLERANCE &&
+    centerY <= frame.y + frame.props.h + FRAME_CONTAINMENT_TOLERANCE
+  )
+}
+
+/**
+ * Post-processing step: expand frames to encompass all shapes whose center
+ * falls within the frame's current bounding box. Adds padding so shapes
+ * don't sit flush against the frame border.
+ */
+async function expandFramesToFitContents(filePath: string): Promise<void> {
+  const store = await readTldrawFile(filePath)
+  const pageId = getCurrentPageId(store)
+  const shapes = getShapesOnPage(store, pageId)
+
+  const frames = shapes.filter((s): s is TLFrameShape => s.type === 'frame')
+  if (frames.length === 0) return
+
+  const nonFrameShapes = shapes.filter((s) => s.type !== 'frame')
+  let changed = false
+
+  for (const frame of frames) {
+    const contained = nonFrameShapes.filter((s) => isShapeContainedByFrame(s, frame))
+    if (contained.length === 0) continue
+
+    // Compute the bounding box of all contained shapes
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+
+    for (const shape of contained) {
+      const bounds = getShapeBounds(shape)
+      minX = Math.min(minX, bounds.x)
+      minY = Math.min(minY, bounds.y)
+      maxX = Math.max(maxX, bounds.x + bounds.w)
+      maxY = Math.max(maxY, bounds.y + bounds.h)
+    }
+
+    // The frame needs to encompass all children with padding
+    const requiredX = minX - FRAME_EXPANSION_PADDING
+    const requiredY = minY - FRAME_EXPANSION_PADDING
+    const requiredRight = maxX + FRAME_EXPANSION_PADDING
+    const requiredBottom = maxY + FRAME_EXPANSION_PADDING
+
+    const newX = Math.min(frame.x, requiredX)
+    const newY = Math.min(frame.y, requiredY)
+    const newW = Math.max(frame.x + frame.props.w, requiredRight) - newX
+    const newH = Math.max(frame.y + frame.props.h, requiredBottom) - newY
+
+    const needsUpdate =
+      newX !== frame.x ||
+      newY !== frame.y ||
+      newW !== frame.props.w ||
+      newH !== frame.props.h
+
+    if (needsUpdate) {
+      store.put([
+        {
+          ...frame,
+          props: { ...frame.props, h: newH, w: newW },
+          x: newX,
+          y: newY
+        }
+      ])
+      changed = true
+    }
+  }
+
+  if (changed) {
+    await writeTldrawFile(filePath, store)
+  }
+}
+
 export async function applyDrawInstructions(
   filePath: string,
   instructions: DrawInstruction[]
@@ -289,6 +386,9 @@ export async function applyDrawInstructions(
     )
     ids.push(id)
   }
+
+  // Post-process: expand frames to encompass contained shapes
+  await expandFramesToFitContents(filePath)
 
   return ids
 }

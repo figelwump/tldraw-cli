@@ -1,6 +1,11 @@
 import type { AddShapeCommandOptions } from '../commands/add.js'
 import { parsePosition, parseSize } from '../commands/parsers.js'
 import { gridShapes, stackShapes, type LayoutDirection } from '../store/layout.js'
+import {
+  estimateLabelDimensions,
+  NOTE_DIMENSIONS_BY_SIZE,
+  TEXT_LINE_HEIGHT_BY_SIZE
+} from '../store/text.js'
 
 const DRAW_SHAPES = ['arrow', 'ellipse', 'frame', 'note', 'rect', 'text'] as const
 
@@ -16,20 +21,6 @@ const DEFAULT_DIMENSIONS = {
   note: { h: 180, w: 220 },
   rect: { h: 120, w: 220 },
   text: { h: 40, w: 280 }
-} as const
-
-const NOTE_DIMENSIONS_BY_SIZE = {
-  l: { h: 240, w: 280 },
-  m: { h: 180, w: 220 },
-  s: { h: 140, w: 180 },
-  xl: { h: 300, w: 340 }
-} as const
-
-const TEXT_LINE_HEIGHT_BY_SIZE = {
-  l: 36,
-  m: 28,
-  s: 22,
-  xl: 44
 } as const
 
 type Token = {
@@ -437,12 +428,12 @@ function resolveInstructionDimensions(instruction: DrawInstruction): { h: number
   }
 
   if (instruction.shape === 'note' && sizeOption && sizeOption in NOTE_DIMENSIONS_BY_SIZE) {
-    return NOTE_DIMENSIONS_BY_SIZE[sizeOption as keyof typeof NOTE_DIMENSIONS_BY_SIZE]
+    return NOTE_DIMENSIONS_BY_SIZE[sizeOption] ?? DEFAULT_DIMENSIONS.note
   }
 
   if (instruction.shape === 'text') {
     const textSize = sizeOption && sizeOption in TEXT_LINE_HEIGHT_BY_SIZE ? sizeOption : 'm'
-    const lineHeight = TEXT_LINE_HEIGHT_BY_SIZE[textSize as keyof typeof TEXT_LINE_HEIGHT_BY_SIZE]
+    const lineHeight = TEXT_LINE_HEIGHT_BY_SIZE[textSize] ?? 28
     const text = instruction.content ?? ''
     const lineCount = Math.max(1, text.split('\n').length)
 
@@ -450,6 +441,17 @@ function resolveInstructionDimensions(instruction: DrawInstruction): { h: number
       h: lineHeight * lineCount,
       w: DEFAULT_DIMENSIONS.text.w
     }
+  }
+
+  // Auto-expand rect/ellipse to fit label text
+  if (instruction.shape === 'rect' || instruction.shape === 'ellipse') {
+    const base = DEFAULT_DIMENSIONS[instruction.shape]
+    const label = instruction.options.label
+    if (label) {
+      const labelDims = estimateLabelDimensions(label, instruction.options.size, instruction.options.font)
+      return { h: Math.max(base.h, labelDims.h), w: Math.max(base.w, labelDims.w) }
+    }
+    return base
   }
 
   return DEFAULT_DIMENSIONS[instruction.shape]
