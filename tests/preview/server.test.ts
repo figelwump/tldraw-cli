@@ -16,7 +16,6 @@ type PreviewDocumentMessage = {
     tldrawFileFormatVersion: number
   }
   readonly: boolean
-  svg: string
   type: 'document'
 }
 
@@ -102,7 +101,6 @@ describe('preview server', () => {
         }
 
         expect(message.document.tldrawFileFormatVersion).toBe(1)
-        expect(message.svg).toContain('<svg')
       } finally {
         ws.close()
       }
@@ -162,6 +160,68 @@ describe('preview server', () => {
       } finally {
         wsA.close()
         wsB.close()
+      }
+    } finally {
+      await server.close()
+    }
+  }, 10000)
+
+  test('sender does not receive its own document broadcast after saving', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'sender-exclusion.tldr')
+    await createFile(filePath)
+
+    const server = await startPreviewServer({ filePath, port: 0 })
+    try {
+      const ws = await openWebSocket(`${server.url.replace('http', 'ws')}/ws`)
+
+      try {
+        const initial = await waitForMessage(ws, (payload) => payload.type === 'document')
+
+        if (initial.type !== 'document') {
+          throw new Error('Expected initial document message')
+        }
+
+        const editedDocument = JSON.parse(JSON.stringify(initial.document)) as PreviewDocumentMessage['document']
+        const documentRecord = getDocumentRecord(editedDocument)
+        if (!documentRecord) {
+          throw new Error('Missing document record in preview payload')
+        }
+
+        documentRecord.name = 'Sender exclusion test'
+
+        // Collect all messages the sender receives after save
+        const messages: PreviewMessage[] = []
+        const onMessage = (payload: Buffer) => {
+          try {
+            messages.push(JSON.parse(payload.toString('utf8')) as PreviewMessage)
+          } catch {
+            // ignore parse errors
+          }
+        }
+        ws.on('message', onMessage)
+
+        // Wait for the 'saved' acknowledgement
+        const savedPromise = waitForMessage(ws, (payload) => payload.type === 'saved')
+
+        ws.send(
+          JSON.stringify({
+            document: editedDocument,
+            type: 'save'
+          })
+        )
+
+        await savedPromise
+
+        // Give a window for any stray broadcast to arrive
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        ws.off('message', onMessage)
+
+        // Sender should have received 'saved' but NOT a 'document' echo
+        expect(messages.some((m) => m.type === 'saved')).toBe(true)
+        expect(messages.some((m) => m.type === 'document')).toBe(false)
+      } finally {
+        ws.close()
       }
     } finally {
       await server.close()

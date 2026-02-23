@@ -6,8 +6,6 @@ import { fileURLToPath } from 'node:url'
 
 import WebSocket, { WebSocketServer } from 'ws'
 
-import { exportFileToSvg } from '../export/svg.js'
-
 type PreviewDocument = {
   records: Array<Record<string, unknown>>
   schema: Record<string, unknown>
@@ -31,7 +29,6 @@ type ServerToClientMessage =
   | {
       document: PreviewDocument
       readonly: boolean
-      svg: string
       type: 'document'
     }
   | {
@@ -57,6 +54,24 @@ const VIEWER_HTML_PATH_CANDIDATES = [
   fileURLToPath(new URL('./viewer.html', import.meta.url)),
   fileURLToPath(new URL('../../src/preview/viewer.html', import.meta.url))
 ]
+
+const TLDRAW_BUNDLE_PATH_CANDIDATES = [
+  fileURLToPath(new URL('./tldraw-bundle.js', import.meta.url)),
+  fileURLToPath(new URL('../../dist/preview/tldraw-bundle.js', import.meta.url))
+]
+
+// Resolve tldraw.css from the tldraw package root in node_modules.
+// The CSS lives at the package root, not in dist-esm/.
+function findTldrawCssPath(): string {
+  try {
+    const tldrawEntry = import.meta.resolve('tldraw')
+    // Walk up from dist-esm/index.mjs to the package root
+    const tldrawPkgDir = fileURLToPath(new URL('..', tldrawEntry))
+    return `${tldrawPkgDir}/tldraw.css`
+  } catch {
+    return fileURLToPath(new URL('../../node_modules/tldraw/tldraw.css', import.meta.url))
+  }
+}
 
 function ensureObject(value: unknown, message: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -153,8 +168,22 @@ async function readViewerTemplate(): Promise<string> {
   throw new Error('Unable to locate preview/viewer.html template file')
 }
 
+async function readStaticFile(candidates: string[]): Promise<Buffer> {
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate)
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw new Error(`Unable to locate static file (tried: ${candidates.join(', ')})`)
+}
+
 export async function startPreviewServer(config: PreviewServerConfig): Promise<PreviewServerHandle> {
   const viewerTemplate = await readViewerTemplate()
+  const tldrawBundle = await readStaticFile(TLDRAW_BUNDLE_PATH_CANDIDATES)
+  const tldrawCss = await readFile(findTldrawCssPath())
   const readonly = config.readonly ?? false
   const watchFile = config.watch ?? false
   const clients = new Set<PreviewSocket>()
@@ -162,19 +191,19 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
   let publishQueue: Promise<void> = Promise.resolve()
   let lastSelfWriteAt = 0
 
-  const publishDocument = async () => {
+  const publishDocument = async (exclude?: PreviewSocket) => {
     const runPublish = async () => {
       const document = await readPreviewDocument(config.filePath)
-      const svg = await exportFileToSvg(config.filePath)
       const message: ServerToClientMessage = {
         document,
         readonly,
-        svg,
         type: 'document'
       }
 
       for (const client of clients) {
-        sendMessage(client, message)
+        if (client !== exclude) {
+          sendMessage(client, message)
+        }
       }
     }
 
@@ -188,6 +217,24 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
     if (requestUrl === '/' || requestUrl.startsWith('/?')) {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       response.end(renderViewerHtml(viewerTemplate, { readonly }))
+      return
+    }
+
+    if (requestUrl === '/tldraw-bundle.js') {
+      response.writeHead(200, {
+        'cache-control': 'public, max-age=31536000, immutable',
+        'content-type': 'application/javascript; charset=utf-8'
+      })
+      response.end(tldrawBundle)
+      return
+    }
+
+    if (requestUrl === '/tldraw.css') {
+      response.writeHead(200, {
+        'cache-control': 'public, max-age=31536000, immutable',
+        'content-type': 'text/css; charset=utf-8'
+      })
+      response.end(tldrawCss)
       return
     }
 
@@ -253,7 +300,7 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
         const document = toPreviewDocument(message.document)
         lastSelfWriteAt = Date.now()
         await writeFile(config.filePath, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
-        await publishDocument()
+        await publishDocument(ws)
         sendMessage(ws, { type: 'saved' })
       } catch (error) {
         const messageText = error instanceof Error ? error.message : String(error)
@@ -263,11 +310,9 @@ export async function startPreviewServer(config: PreviewServerConfig): Promise<P
 
     try {
       const document = await readPreviewDocument(config.filePath)
-      const svg = await exportFileToSvg(config.filePath)
       sendMessage(ws, {
         document,
         readonly,
-        svg,
         type: 'document'
       })
     } catch (error) {

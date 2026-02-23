@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>tldraw-cli preview</title>
+    <link rel="stylesheet" href="/tldraw.css" />
     <style>
       :root {
         --bg: #f3f5f8;
@@ -24,24 +25,29 @@
         height: 100%;
         margin: 0;
         color: var(--ink);
-        background: radial-gradient(circle at 10% -10%, #e4f5f2 0%, var(--bg) 40%);
+        background: var(--bg);
         font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
       }
 
-      .layout {
-        height: 100%;
-        display: grid;
-        grid-template-rows: auto 1fr auto;
-      }
-
       .topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 10px 14px;
+        padding: 8px 14px;
         border-bottom: 1px solid var(--line);
         background: color-mix(in oklab, var(--panel) 85%, transparent);
         backdrop-filter: blur(6px);
+      }
+
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
 
       .title {
@@ -60,259 +66,353 @@
         color: var(--danger);
       }
 
-      .panes {
-        min-height: 0;
-        display: grid;
-        grid-template-columns: 1.25fr 1fr;
-        gap: 10px;
-        padding: 10px;
-      }
-
-      .panel {
-        min-height: 0;
+      .json-toggle-btn {
         border: 1px solid var(--line);
-        border-radius: 12px;
-        overflow: hidden;
-        background: var(--panel);
-        box-shadow: 0 8px 30px rgba(16, 24, 40, 0.06);
-      }
-
-      .panel-head {
-        padding: 8px 10px;
-        border-bottom: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 12px;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-
-      #svg-preview {
-        height: 100%;
-        overflow: auto;
-        padding: 12px;
-      }
-
-      #json-editor {
-        width: 100%;
-        height: calc(100% - 38px);
-        border: 0;
-        margin: 0;
-        resize: none;
-        padding: 12px;
-        font-size: 12px;
-        line-height: 1.55;
-        font-family: "IBM Plex Mono", "SF Mono", monospace;
-        color: #0f1728;
-      }
-
-      .footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 14px;
-        border-top: 1px solid var(--line);
-        background: #fff;
-      }
-
-      .help {
-        font-size: 12px;
-        color: var(--muted);
-      }
-
-      .actions {
-        display: flex;
-        gap: 8px;
-      }
-
-      button {
-        border: 0;
-        border-radius: 8px;
-        padding: 7px 12px;
+        border-radius: 6px;
+        padding: 5px 10px;
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
-        color: #fff;
+        color: var(--ink);
+        background: var(--panel);
+        font-family: "IBM Plex Mono", "SF Mono", monospace;
+      }
+
+      .json-toggle-btn:hover {
+        background: var(--bg);
+      }
+
+      .json-toggle-btn.active {
         background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
       }
 
-      button.secondary {
-        background: #3f516d;
+      #tldraw-root {
+        position: absolute;
+        inset: 0;
+        top: 42px;
       }
 
-      button:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
+      .json-sidebar {
+        position: fixed;
+        top: 42px;
+        right: 0;
+        bottom: 0;
+        width: min(480px, 45vw);
+        z-index: 999;
+        background: var(--panel);
+        border-left: 1px solid var(--line);
+        box-shadow: -4px 0 20px rgba(16, 24, 40, 0.08);
+        display: flex;
+        flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.2s ease;
       }
 
-      @media (max-width: 880px) {
-        .panes {
-          grid-template-columns: 1fr;
-          grid-template-rows: 1fr 1fr;
-        }
+      .json-sidebar.visible {
+        transform: translateX(0);
+      }
+
+      .json-sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .json-close-btn {
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 18px;
+        color: var(--muted);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .json-close-btn:hover {
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      #json-content {
+        flex: 1;
+        overflow: auto;
+        padding: 12px;
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.55;
+        font-family: "IBM Plex Mono", "SF Mono", monospace;
+        color: #0f1728;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      #loading-message {
+        position: absolute;
+        inset: 0;
+        top: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        color: var(--muted);
       }
     </style>
+    <!-- tldraw + React loaded from local bundle to avoid dual-React-instance
+         issues that occur with CDN loading (esm.sh resolves transitive
+         deps to different React versions). -->
   </head>
   <body>
-    <div class="layout">
-      <header class="topbar">
-        <div class="title">tldraw-cli Live Preview</div>
-        <div id="status" class="status">Connecting…</div>
-      </header>
-      <main class="panes">
-        <section class="panel">
-          <div class="panel-head">Canvas Preview (SVG)</div>
-          <div id="svg-preview"></div>
-        </section>
-        <section class="panel">
-          <div class="panel-head">Document JSON</div>
-          <textarea id="json-editor" spellcheck="false"></textarea>
-        </section>
-      </main>
-      <footer class="footer">
-        <div class="help">Edits in JSON are auto-saved. External file changes sync back when watch mode is enabled.</div>
-        <div class="actions">
-          <button id="reload" class="secondary" type="button">Reload</button>
-          <button id="save" type="button">Save</button>
-        </div>
-      </footer>
-    </div>
-    <!--__TLDRAW_PREVIEW_CONFIG__-->
-    <script type="module">
-      const config = window.__TLDRAW_PREVIEW_CONFIG__ ?? { readonly: false }
-      const statusEl = document.getElementById('status')
-      const jsonEditor = document.getElementById('json-editor')
-      const svgPreview = document.getElementById('svg-preview')
-      const saveButton = document.getElementById('save')
-      const reloadButton = document.getElementById('reload')
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="title">tldraw-cli</div>
+        <div id="status" class="status">Loading editor…</div>
+      </div>
+      <button id="json-toggle" class="json-toggle-btn" type="button">{ } JSON</button>
+    </header>
 
-      let socket = null
-      let debounceHandle = null
-      let latestDocument = null
-      let applyingRemoteUpdate = false
-      let reconnectDelayMs = 1000
-      let svgObjectUrl = null
+    <div id="loading-message">Loading tldraw editor…</div>
+    <div id="tldraw-root"></div>
+
+    <aside id="json-sidebar" class="json-sidebar">
+      <div class="json-sidebar-header">
+        <span>Document JSON</span>
+        <button id="json-close" class="json-close-btn" type="button">&times;</button>
+      </div>
+      <pre id="json-content"></pre>
+    </aside>
+
+    <!--__TLDRAW_PREVIEW_CONFIG__-->
+
+    <!-- Fallback: if tldraw hasn't mounted after 10s, show error -->
+    <script>
+      window.__loadCheck = setTimeout(function () {
+        var root = document.getElementById('tldraw-root');
+        if (root && root.children.length === 0) {
+          var msg = document.getElementById('loading-message');
+          if (msg) {
+            msg.textContent = 'Failed to load tldraw editor. Try reloading the page.';
+          }
+        }
+      }, 10000);
+    </script>
+
+    <script type="module">
+      const config = window.__TLDRAW_PREVIEW_CONFIG__ ?? { readonly: false };
+      const statusEl = document.getElementById('status');
+      const jsonToggleBtn = document.getElementById('json-toggle');
+      const jsonSidebar = document.getElementById('json-sidebar');
+      const jsonCloseBtn = document.getElementById('json-close');
+      const jsonContent = document.getElementById('json-content');
+      const loadingMessage = document.getElementById('loading-message');
+
+      let socket = null;
+      let editor = null;
+      let debounceHandle = null;
+      let reconnectDelayMs = 1000;
+      // Buffer first document message if it arrives before editor mounts
+      let pendingDocument = null;
+      // Track the file format version from the server so saves preserve it
+      let fileFormatVersion = 1;
 
       function setStatus(text, isError = false) {
-        statusEl.textContent = text
-        statusEl.classList.toggle('error', isError)
+        statusEl.textContent = text;
+        statusEl.classList.toggle('error', isError);
       }
 
-      function renderPreview(svg) {
-        if (svgObjectUrl) {
-          URL.revokeObjectURL(svgObjectUrl)
-          svgObjectUrl = null
+      // -- JSON sidebar toggle --
+      let jsonVisible = false;
+      function toggleJson(force) {
+        jsonVisible = force !== undefined ? force : !jsonVisible;
+        jsonSidebar.classList.toggle('visible', jsonVisible);
+        jsonToggleBtn.classList.toggle('active', jsonVisible);
+        if (jsonVisible) updateJsonPanel();
+      }
+      jsonToggleBtn.addEventListener('click', () => toggleJson());
+      jsonCloseBtn.addEventListener('click', () => toggleJson(false));
+
+      // Record types that belong in the .tldr file (document scope).
+      // Session records (camera, instance, page_state, pointer) stay local.
+      const DOCUMENT_TYPES = new Set(['asset', 'binding', 'document', 'page', 'shape']);
+
+      function updateJsonPanel() {
+        if (!jsonVisible || !editor) return;
+        try {
+          const fileDoc = storeToFileDoc();
+          jsonContent.textContent = JSON.stringify(fileDoc, null, 2);
+        } catch {
+          // Editor may not be ready yet
         }
-
-        const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
-        svgObjectUrl = URL.createObjectURL(svgBlob)
-
-        svgPreview.innerHTML = ''
-        const image = document.createElement('img')
-        image.src = svgObjectUrl
-        image.alt = 'tldraw preview'
-        image.style.maxWidth = '100%'
-        image.style.height = 'auto'
-        svgPreview.appendChild(image)
       }
 
-      function applyDocument(document, svg) {
-        latestDocument = document
-        applyingRemoteUpdate = true
-        jsonEditor.value = JSON.stringify(document, null, 2)
-        applyingRemoteUpdate = false
-
-        renderPreview(svg)
+      // -- Build .tldr file document from editor store --
+      function storeToFileDoc() {
+        const records = editor.store.allRecords()
+          .filter(r => DOCUMENT_TYPES.has(r.typeName));
+        return {
+          tldrawFileFormatVersion: fileFormatVersion,
+          records,
+          schema: editor.store.schema.serialize()
+        };
       }
 
+      // -- Save: editor → server --
       function sendSave() {
-        if (config.readonly || !socket || socket.readyState !== WebSocket.OPEN) {
-          return
+        if (config.readonly || !socket || socket.readyState !== WebSocket.OPEN || !editor) {
+          return;
         }
 
         try {
-          const parsed = JSON.parse(jsonEditor.value)
-          socket.send(JSON.stringify({ type: 'save', document: parsed }))
-          setStatus('Saving…')
+          const fileDoc = storeToFileDoc();
+          socket.send(JSON.stringify({ type: 'save', document: fileDoc }));
+          setStatus('Saving…');
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          setStatus(`Invalid JSON: ${message}`, true)
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`Save error: ${message}`, true);
         }
       }
 
+      // -- Apply document from server into editor --
+      // Uses incremental put/remove so tldraw's session records
+      // (camera, instance, page state) remain intact.
+      function applyDocument(document) {
+        if (document.tldrawFileFormatVersion) {
+          fileFormatVersion = document.tldrawFileFormatVersion;
+        }
+
+        if (!editor) {
+          pendingDocument = document;
+          return;
+        }
+
+        try {
+          const incomingRecords = document.records;
+          const incomingIds = new Set(incomingRecords.map(r => r.id));
+
+          editor.store.mergeRemoteChanges(() => {
+            // Remove document-scope records absent from the incoming set
+            const toRemove = editor.store.allRecords()
+              .filter(r => DOCUMENT_TYPES.has(r.typeName) && !incomingIds.has(r.id))
+              .map(r => r.id);
+            if (toRemove.length > 0) editor.store.remove(toRemove);
+
+            // Add/update all incoming records
+            editor.store.put(incomingRecords);
+          });
+          if (jsonVisible) updateJsonPanel();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`Sync error: ${message}`, true);
+        }
+      }
+
+      // -- WebSocket connection --
       function connect() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        socket = new WebSocket(`${protocol}//${window.location.host}/ws`)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
         socket.addEventListener('open', () => {
-          reconnectDelayMs = 1000
-          setStatus('Connected')
-        })
+          reconnectDelayMs = 1000;
+          setStatus('Connected');
+        });
 
         socket.addEventListener('close', () => {
-          setStatus(`Disconnected. Retrying in ${Math.round(reconnectDelayMs / 1000)}s…`, true)
-          window.setTimeout(connect, reconnectDelayMs)
-          reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000)
-        })
+          setStatus(`Disconnected. Retrying in ${Math.round(reconnectDelayMs / 1000)}s…`, true);
+          window.setTimeout(connect, reconnectDelayMs);
+          reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000);
+        });
 
         socket.addEventListener('message', (event) => {
           try {
-            const message = JSON.parse(event.data)
+            const message = JSON.parse(event.data);
 
             if (message.type === 'document') {
-              applyDocument(message.document, message.svg)
-              setStatus(message.readonly ? 'Connected (readonly)' : 'Connected')
-              return
+              applyDocument(message.document);
+              setStatus(message.readonly ? 'Connected (readonly)' : 'Connected');
+              return;
             }
 
             if (message.type === 'saved') {
-              setStatus('Saved')
-              return
+              setStatus('Saved');
+              return;
             }
 
             if (message.type === 'error') {
-              setStatus(message.message, true)
-              return
+              setStatus(message.message, true);
+              return;
             }
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            setStatus(`Message error: ${message}`, true)
+            const message = error instanceof Error ? error.message : String(error);
+            setStatus(`Message error: ${message}`, true);
           }
-        })
+        });
       }
 
-      jsonEditor.addEventListener('input', () => {
-        if (config.readonly || applyingRemoteUpdate) {
-          return
-        }
+      // -- Mount tldraw editor --
+      async function mountEditor() {
+        // Dynamic import so we get tldraw from the import map
+        const { createRoot, jsx, Tldraw } = await import('/tldraw-bundle.js');
 
-        if (debounceHandle) {
-          window.clearTimeout(debounceHandle)
-        }
+        // Clear loading message
+        if (loadingMessage) loadingMessage.remove();
+        clearTimeout(window.__loadCheck);
 
-        debounceHandle = window.setTimeout(sendSave, 700)
-      })
+        const root = createRoot(document.getElementById('tldraw-root'));
 
-      saveButton.addEventListener('click', () => {
-        sendSave()
-      })
+        root.render(
+          jsx(Tldraw, {
+            onMount: (editorInstance) => {
+              editor = editorInstance;
 
-      reloadButton.addEventListener('click', () => {
-        if (!latestDocument) {
-          return
-        }
+              if (config.readonly) {
+                editor.updateInstanceState({ isReadonly: true });
+              }
 
-        applyingRemoteUpdate = true
-        jsonEditor.value = JSON.stringify(latestDocument, null, 2)
-        applyingRemoteUpdate = false
-        setStatus('Editor reloaded from latest synced state')
-      })
+              // Apply buffered document if server sent it before mount
+              if (pendingDocument) {
+                applyDocument(pendingDocument);
+                pendingDocument = null;
+              }
 
-      if (config.readonly) {
-        jsonEditor.disabled = true
-        saveButton.disabled = true
+              // Listen for user edits and auto-save (skip in readonly)
+              if (!config.readonly) {
+                editor.store.listen(
+                  () => {
+                    if (debounceHandle) window.clearTimeout(debounceHandle);
+                    debounceHandle = window.setTimeout(sendSave, 700);
+                  },
+                  { source: 'user', scope: 'document' }
+                );
+              }
+
+              // Update JSON panel when store changes (any source)
+              editor.store.listen(
+                () => {
+                  if (jsonVisible) updateJsonPanel();
+                },
+                { scope: 'document' }
+              );
+            }
+          })
+        );
       }
 
-      connect()
+      // Start everything
+      connect();
+      mountEditor().catch((error) => {
+        console.error('Failed to mount tldraw editor:', error);
+        if (loadingMessage) {
+          loadingMessage.textContent = 'Failed to load tldraw editor: ' + (error.message || String(error));
+        }
+      });
     </script>
   </body>
 </html>
