@@ -16,7 +16,7 @@ import {
 import { createShapeRecord } from '../store/factory.js'
 import { autoPlace } from '../store/layout.js'
 import { getCurrentPageId, getShapesOnPage, readTldrawFile, writeTldrawFile } from '../store/io.js'
-import { getShapeCenter, getShapeLabel } from '../store/shapes.js'
+import { getShapeBorderPoint, getShapeCenter, getShapeLabel } from '../store/shapes.js'
 import { estimateLabelDimensions } from '../store/text.js'
 
 const SUPPORTED_SHAPES = ['arrow', 'ellipse', 'frame', 'note', 'rect', 'text'] as const
@@ -257,13 +257,24 @@ export async function addShapeToFile(
       })
     }
 
-    // Arrow — fromTarget/toTarget are guaranteed set above
+    // Arrow — fromTarget/toTarget are guaranteed set above.
+    // Use border intersection points so the arrow's stored coordinates
+    // already avoid crossing through shapes. The bindings created below
+    // handle dynamic re-routing when tldraw's editor is running; these
+    // border points serve as the static fallback for initial render and
+    // non-interactive contexts (e.g., SVG export).
     const arrowLabel = options.label ?? content
+    const fromPoint = fromTarget!.shape
+      ? getShapeBorderPoint(fromTarget!.shape, toTarget!.point)
+      : fromTarget!.point
+    const toPoint = toTarget!.shape
+      ? getShapeBorderPoint(toTarget!.shape, fromTarget!.point)
+      : toTarget!.point
     return createShapeRecord({
       ...sharedStyle,
-      fromPoint: fromTarget!.point,
+      fromPoint,
       ...(arrowLabel ? { label: arrowLabel } : {}),
-      toPoint: toTarget!.point,
+      toPoint,
       type: 'arrow'
     })
   })()

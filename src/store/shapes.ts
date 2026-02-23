@@ -108,6 +108,56 @@ export function getShapeCenter(shape: TLShape): { x: number; y: number } {
   }
 }
 
+/**
+ * Compute the point on a shape's border where a line from the shape's center
+ * to `target` would intersect. Used so that arrows connect at borders instead
+ * of through the center (and through label text).
+ *
+ * For rectangles/frames: exact edge intersection.
+ * For ellipses: parametric ellipse intersection.
+ * For other shapes: falls back to center.
+ */
+export function getShapeBorderPoint(
+  shape: TLShape,
+  target: { x: number; y: number },
+  padding = 4
+): { x: number; y: number } {
+  const bounds = getShapeBounds(shape)
+  const cx = bounds.x + bounds.w / 2
+  const cy = bounds.y + bounds.h / 2
+  const dx = target.x - cx
+  const dy = target.y - cy
+
+  // Degenerate case: target is at center
+  if (dx === 0 && dy === 0) {
+    return { x: cx, y: cy }
+  }
+
+  const isEllipse =
+    shape.type === 'geo' && (shape as TLGeoShape).props.geo === 'ellipse'
+
+  if (isEllipse) {
+    // Ellipse with semi-axes a, b
+    const a = bounds.w / 2
+    const b = bounds.h / 2
+    const denom = Math.sqrt((dx * dx) / (a * a) + (dy * dy) / (b * b))
+    const t = 1 / denom
+    // Move slightly outward past the border
+    const tPadded = t + padding / Math.sqrt(dx * dx + dy * dy)
+    return { x: cx + dx * tPadded, y: cy + dy * tPadded }
+  }
+
+  // Rectangle / frame / default: axis-aligned box intersection
+  const hw = bounds.w / 2
+  const hh = bounds.h / 2
+  const tX = dx !== 0 ? hw / Math.abs(dx) : Infinity
+  const tY = dy !== 0 ? hh / Math.abs(dy) : Infinity
+  const t = Math.min(tX, tY)
+  // Move slightly outward past the border
+  const tPadded = t + padding / Math.sqrt(dx * dx + dy * dy)
+  return { x: cx + dx * tPadded, y: cy + dy * tPadded }
+}
+
 export function getShapeLabel(shape: TLShape): string | null {
   if (shape.type === 'frame') {
     const frameShape = shape as TLFrameShape
