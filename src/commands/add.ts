@@ -1,4 +1,5 @@
-import type { TLPageId, TLShape, TLShapeId } from '@tldraw/tlschema'
+import type { TLArrowBinding, TLPageId, TLShape, TLShapeId } from '@tldraw/tlschema'
+import { createBindingId } from '@tldraw/tlschema'
 import { getIndexAbove, type IndexKey } from '@tldraw/utils'
 import type { Command } from 'commander'
 
@@ -85,21 +86,26 @@ function resolveSizeOptions(options: AddShapeCommandOptions): {
   return { dimensions, sizeStyle }
 }
 
-function resolveArrowTarget(target: string, shapes: TLShape[]): { x: number; y: number } {
+type ArrowTargetResult = {
+  point: { x: number; y: number }
+  shape?: TLShape
+}
+
+function resolveArrowTarget(target: string, shapes: TLShape[]): ArrowTargetResult {
   const pointTarget = parsePositionOrNull(target)
 
   if (pointTarget) {
-    return pointTarget
+    return { point: pointTarget }
   }
 
   const byId = shapes.find((shape) => shape.id === target)
   if (byId) {
-    return getShapeCenter(byId)
+    return { point: getShapeCenter(byId), shape: byId }
   }
 
   const byLabel = shapes.find((shape) => getShapeLabel(shape) === target)
   if (byLabel) {
-    return getShapeCenter(byLabel)
+    return { point: getShapeCenter(byLabel), shape: byLabel }
   }
 
   throw new Error(`Unable to resolve arrow target "${target}" to a coordinate or shape`)
@@ -176,6 +182,19 @@ export async function addShapeToFile(
     }
   }
 
+  // Resolve arrow targets upfront so we can reuse them for both
+  // shape creation and binding creation.
+  let fromTarget: ArrowTargetResult | undefined
+  let toTarget: ArrowTargetResult | undefined
+
+  if (shapeType === 'arrow') {
+    if (!options.from || !options.to) {
+      throw new Error('Arrow shapes require both --from and --to')
+    }
+    fromTarget = resolveArrowTarget(options.from, shapes)
+    toTarget = resolveArrowTarget(options.to, shapes)
+  }
+
   const shapeRecord = (() => {
     if (shapeType === 'rect') {
       const shapeDimensions = expandForLabel(
@@ -238,24 +257,66 @@ export async function addShapeToFile(
       })
     }
 
-    if (!options.from || !options.to) {
-      throw new Error('Arrow shapes require both --from and --to')
-    }
-
-    const fromPoint = resolveArrowTarget(options.from, shapes)
-    const toPoint = resolveArrowTarget(options.to, shapes)
+    // Arrow — fromTarget/toTarget are guaranteed set above
     const arrowLabel = options.label ?? content
-
     return createShapeRecord({
       ...sharedStyle,
-      fromPoint,
+      fromPoint: fromTarget!.point,
       ...(arrowLabel ? { label: arrowLabel } : {}),
-      toPoint,
+      toPoint: toTarget!.point,
       type: 'arrow'
     })
   })()
 
   store.put([shapeRecord])
+
+  // Create TLArrowBinding records so tldraw routes arrows to shape borders
+  // instead of through shape centers. Only created when the arrow targets
+  // a shape (not raw coordinates).
+  if (fromTarget || toTarget) {
+    const bindings: TLArrowBinding[] = []
+
+    if (fromTarget?.shape) {
+      bindings.push({
+        id: createBindingId(),
+        type: 'arrow',
+        typeName: 'binding',
+        fromId: shapeRecord.id,
+        toId: fromTarget.shape.id,
+        meta: {},
+        props: {
+          terminal: 'start',
+          normalizedAnchor: { x: 0.5, y: 0.5 },
+          isExact: false,
+          isPrecise: false,
+          snap: 'none' as const
+        }
+      })
+    }
+
+    if (toTarget?.shape) {
+      bindings.push({
+        id: createBindingId(),
+        type: 'arrow',
+        typeName: 'binding',
+        fromId: shapeRecord.id,
+        toId: toTarget.shape.id,
+        meta: {},
+        props: {
+          terminal: 'end',
+          normalizedAnchor: { x: 0.5, y: 0.5 },
+          isExact: false,
+          isPrecise: false,
+          snap: 'none' as const
+        }
+      })
+    }
+
+    if (bindings.length > 0) {
+      store.put(bindings)
+    }
+  }
+
   await writeTldrawFile(filePath, store)
 
   return shapeRecord.id

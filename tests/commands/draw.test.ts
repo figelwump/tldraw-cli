@@ -2,12 +2,13 @@ import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import type { TLFrameShape, TLGeoShape } from '@tldraw/tlschema'
+import type { TLArrowBinding, TLFrameShape, TLGeoShape } from '@tldraw/tlschema'
 import { describe, expect, test } from 'vitest'
 
 import { createFile } from '../../src/commands/create.js'
 import { drawFromDsl, drawFromJson } from '../../src/commands/draw.js'
 import { listShapes, toShapeListRows } from '../../src/commands/list.js'
+import { readTldrawFile } from '../../src/store/io.js'
 
 describe('draw command', () => {
   test('draws a DSL document and resolves arrow labels', async () => {
@@ -225,5 +226,97 @@ describe('draw command', () => {
     // Frame should NOT have expanded
     expect(frame!.props.w).toBe(200)
     expect(frame!.props.h).toBe(100)
+  })
+
+  test('creates arrow bindings when arrow targets shapes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'draw-arrow-bindings.tldr')
+
+    await createFile(filePath)
+
+    const ids = await drawFromDsl(
+      filePath,
+      `
+        rect 0,0 200x80 "Source"
+        rect 0,200 200x80 "Target"
+        arrow "Source" -> "Target"
+      `
+    )
+
+    const arrowId = ids[2]
+    const store = await readTldrawFile(filePath)
+    const bindings = store
+      .allRecords()
+      .filter((r): r is TLArrowBinding => r.typeName === 'binding' && r.type === 'arrow')
+
+    // Should have two bindings: one for start, one for end
+    expect(bindings).toHaveLength(2)
+
+    const startBinding = bindings.find((b) => b.props.terminal === 'start')
+    const endBinding = bindings.find((b) => b.props.terminal === 'end')
+
+    expect(startBinding).toBeDefined()
+    expect(startBinding!.fromId).toBe(arrowId)
+    expect(startBinding!.props.isExact).toBe(false)
+    expect(startBinding!.props.isPrecise).toBe(false)
+    expect(startBinding!.props.snap).toBe('none')
+
+    expect(endBinding).toBeDefined()
+    expect(endBinding!.fromId).toBe(arrowId)
+    expect(endBinding!.props.isExact).toBe(false)
+    expect(endBinding!.props.isPrecise).toBe(false)
+    expect(endBinding!.props.snap).toBe('none')
+
+    // Start binding should point to "Source", end binding to "Target"
+    const shapes = await listShapes(filePath)
+    const sourceId = ids[0]
+    const targetId = ids[1]
+    const geoShapeIds = shapes.filter((s) => s.type === 'geo').map((s) => s.id)
+    expect(geoShapeIds).toHaveLength(2)
+    expect(startBinding!.toId).toBe(sourceId)
+    expect(endBinding!.toId).toBe(targetId)
+  })
+
+  test('creates one binding for mixed arrow target (shape + coordinate)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'draw-arrow-mixed.tldr')
+
+    await createFile(filePath)
+
+    await drawFromDsl(
+      filePath,
+      `
+        rect 0,0 200x80 "Source"
+        arrow "Source" -> 300,300
+      `
+    )
+
+    const store = await readTldrawFile(filePath)
+    const bindings = store
+      .allRecords()
+      .filter((r): r is TLArrowBinding => r.typeName === 'binding' && r.type === 'arrow')
+
+    // Only the shape-targeted end (start) should have a binding
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0].props.terminal).toBe('start')
+  })
+
+  test('does not create bindings for coordinate-based arrows', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tldraw-cli-'))
+    const filePath = join(dir, 'draw-arrow-no-bindings.tldr')
+
+    await createFile(filePath)
+
+    await drawFromDsl(
+      filePath,
+      'arrow 0,0 -> 200,200'
+    )
+
+    const store = await readTldrawFile(filePath)
+    const bindings = store
+      .allRecords()
+      .filter((r) => r.typeName === 'binding')
+
+    expect(bindings).toHaveLength(0)
   })
 })

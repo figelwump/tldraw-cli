@@ -8,18 +8,19 @@
 
 // Average character widths (in pixels) per font family × size tier.
 // Calibrated by measuring tldraw's actual rendering of sample text.
+// Deliberately generous — slightly oversized shapes look better than text overflow.
 const AVG_CHAR_WIDTHS: Record<string, Record<string, number>> = {
-  draw: { l: 14, m: 11, s: 8, xl: 18 },
-  mono: { l: 13, m: 10, s: 7.5, xl: 16 },
-  sans: { l: 12, m: 9.5, s: 7, xl: 15 },
-  serif: { l: 12, m: 9.5, s: 7, xl: 15 }
+  draw: { l: 17, m: 14, s: 10, xl: 22 },
+  mono: { l: 14, m: 11, s: 8.5, xl: 17 },
+  sans: { l: 13, m: 10.5, s: 8, xl: 16 },
+  serif: { l: 13, m: 10.5, s: 8, xl: 16 }
 }
 
-// Horizontal padding inside a geo shape label (20px each side)
-const GEO_LABEL_H_PADDING = 40
+// Horizontal padding inside a geo shape label (28px each side)
+const GEO_LABEL_H_PADDING = 56
 
-// Vertical padding inside a geo shape label (18px top + 18px bottom)
-const GEO_LABEL_V_PADDING = 36
+// Vertical padding inside a geo shape label (22px top + 22px bottom)
+const GEO_LABEL_V_PADDING = 44
 
 // Line height per size tier — used for multi-line text height calculation.
 // Single source of truth; previously duplicated in parser.ts and shapes.ts.
