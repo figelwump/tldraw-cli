@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 
 import type { TLFrameShape, TLShape } from '@tldraw/tlschema'
 import type { Command } from 'commander'
+import { getIndexBelow, type IndexKey } from '@tldraw/utils'
 
 import { addShapeToFile, type AddShapeCommandOptions } from './add.js'
 import { parseDsl, type DrawInstruction } from '../dsl/parser.js'
@@ -371,6 +372,48 @@ async function expandFramesToFitContents(filePath: string): Promise<void> {
   }
 }
 
+/**
+ * Post-processing step: move all frames to the bottom of the z-stack so
+ * their backgrounds don't cover sibling shapes. In tldraw, frames are
+ * typically behind other shapes. Without this, interleaved creation order
+ * in draw instructions can leave frames on top of geo shapes, hiding them.
+ */
+async function reindexFramesToBottom(filePath: string): Promise<void> {
+  const store = await readTldrawFile(filePath)
+  const pageId = getCurrentPageId(store)
+  const shapes = getShapesOnPage(store, pageId)
+
+  const frames = shapes.filter((s): s is TLFrameShape => s.type === 'frame')
+  if (frames.length === 0) return
+
+  // Find the lowest index among all non-frame shapes
+  let lowestNonFrameIndex: IndexKey | undefined
+  for (const shape of shapes) {
+    if (shape.type === 'frame') continue
+    if (!lowestNonFrameIndex || shape.index < lowestNonFrameIndex) {
+      lowestNonFrameIndex = shape.index
+    }
+  }
+
+  if (!lowestNonFrameIndex) return
+
+  // Assign frames indices below the lowest non-frame shape
+  let nextFrameIndex = getIndexBelow(lowestNonFrameIndex)
+  const updates: TLFrameShape[] = []
+
+  for (const frame of frames) {
+    if (frame.index >= lowestNonFrameIndex) {
+      updates.push({ ...frame, index: nextFrameIndex })
+      nextFrameIndex = getIndexBelow(nextFrameIndex)
+    }
+  }
+
+  if (updates.length > 0) {
+    store.put(updates)
+    await writeTldrawFile(filePath, store)
+  }
+}
+
 export async function applyDrawInstructions(
   filePath: string,
   instructions: DrawInstruction[]
@@ -387,7 +430,8 @@ export async function applyDrawInstructions(
     ids.push(id)
   }
 
-  // Post-process: expand frames to encompass contained shapes
+  // Post-process: move frames behind other shapes, then expand to fit contents
+  await reindexFramesToBottom(filePath)
   await expandFramesToFitContents(filePath)
 
   return ids
